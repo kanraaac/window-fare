@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    image: window-fare:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PORT: "18080"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.window-fare.rule=Host(`flight.srv1821288.hstgr.cloud`)
+      - traefik.http.routers.window-fare.entrypoints=websecure
+      - traefik.http.routers.window-fare.tls.certresolver=letsencrypt
+      - traefik.http.services.window-fare.loadbalancer.server.url=http://127.0.0.1:18080

@@ -1,0 +1,13 @@
+{
+  "name": "window-fare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "김해/김포 출발 기간 왕복 항공권 탐색기",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -10,9 +10,11 @@
   const resultsEl = document.getElementById("results");
   const heatmap = document.getElementById("heatmap");
   const dealLinks = document.getElementById("deal-links");
-  const extraDests = document.getElementById("extra-dests");
   const sortEl = document.getElementById("sort");
   const groupEl = document.getElementById("group");
+  const otherWrap = document.getElementById("other-air-wrap");
+  const airPicks = [document.getElementById("air1"), document.getElementById("air2"), document.getElementById("air3")];
+  const KR_SKIP = new Set(["ICN", "GMP", "PUS", "CJU", "TAE", "CJJ", "KWJ", "RSU", "USN", "WJU", "MWX", "HIN", "KPO", "YNY", "KUV"]);
 
   let rows = [];
   let selectedDays = new Set();
@@ -28,15 +30,29 @@
   function diffDays(a, b) {
     return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
   }
+  function sanePrice(n) {
+    return typeof n === "number" && Number.isFinite(n) && n >= 1000 && n <= 50000000 ? Math.round(n) : null;
+  }
   function won(n) {
-    if (n == null) return "요금 없음";
-    return new Intl.NumberFormat("ko-KR").format(n) + "원";
+    const p = sanePrice(n);
+    if (p == null) return "요금 없음";
+    return new Intl.NumberFormat("ko-KR").format(p) + "원";
   }
   function origins() {
     return [...document.querySelectorAll('input[name="origin"]:checked')].map((x) => x.value);
   }
   function regions() {
-    return [...document.querySelectorAll("[data-region].on")].map((x) => x.dataset.region);
+    return [...document.querySelectorAll("[data-region].on")].map((x) => x.dataset.region).filter((r) => r !== "other");
+  }
+  function otherOn() {
+    return !!document.getElementById("other-chip")?.classList.contains("on");
+  }
+  function pickedAirports() {
+    return airPicks.map((el) => (el && el.value) || "").filter((v) => /^[A-Z]{3}$/.test(v));
+  }
+  function syncOtherWrap() {
+    if (!otherWrap) return;
+    otherWrap.classList.toggle("hidden", !otherOn());
   }
 
   function setDefaultDates() {
@@ -56,7 +72,7 @@
     selectedDays = new Set();
     durBox.innerHTML = "";
     for (let d = 2; d <= windowDays; d++) {
-      const on = keep ? keep.has(d) : (windowDays >= 7 ? d < windowDays : true);
+      const on = keep ? keep.has(d) : windowDays >= 7 ? d < windowDays : true;
       if (on) selectedDays.add(d);
       const b = document.createElement("button");
       b.type = "button";
@@ -74,11 +90,32 @@
     previewCount();
   }
 
+  function queryBody() {
+    const days = [...selectedDays].sort((a, b) => a - b);
+    const dests = pickedAirports().filter((c, i, arr) => arr.indexOf(c) === i);
+    return {
+      origins: origins(),
+      start: startEl.value,
+      end: endEl.value,
+      minDays: days[0] || 2,
+      maxDays: days[days.length - 1] || 2,
+      durationDays: days,
+      adults: Number(document.getElementById("adults").value || 1),
+      nonstop: document.getElementById("nonstop").checked,
+      regions: regions(),
+      dests,
+    };
+  }
+
   async function previewCount() {
     if (!startEl.value || !endEl.value) return;
     const body = queryBody();
     if (!body.origins.length || !body.minDays) {
       preview.textContent = "출발 공항과 체류 일수를 선택하세요.";
+      return;
+    }
+    if (otherOn() && !body.regions.length && !body.dests.length) {
+      preview.textContent = "그외 공항을 1개 이상 선택하세요.";
       return;
     }
     try {
@@ -98,30 +135,11 @@
     }
   }
 
-  function queryBody() {
-    const days = [...selectedDays].sort((a, b) => a - b);
-    const extra = extraDests.value
-      .split(/[,\s]+/)
-      .map((s) => s.trim().toUpperCase())
-      .filter((s) => /^[A-Z]{3}$/.test(s));
-    return {
-      origins: origins(),
-      start: startEl.value,
-      end: endEl.value,
-      minDays: days[0] || 2,
-      maxDays: days[days.length - 1] || 2,
-      durationDays: days,
-      adults: Number(document.getElementById("adults").value || 1),
-      nonstop: document.getElementById("nonstop").checked,
-      regions: regions(),
-      dests: extra,
-    };
-  }
-
   document.querySelectorAll("[data-region]").forEach((btn) => {
     btn.addEventListener("click", () => {
       btn.classList.toggle("on");
       if (!document.querySelector("[data-region].on")) btn.classList.add("on");
+      syncOtherWrap();
       previewCount();
     });
   });
@@ -137,14 +155,38 @@
   });
   startEl.addEventListener("change", renderDurations);
   endEl.addEventListener("change", renderDurations);
-  extraDests.addEventListener("change", previewCount);
+  airPicks.forEach((el) => el && el.addEventListener("change", previewCount));
+
+  async function fillAirportSelects() {
+    let list = [];
+    try {
+      const res = await fetch("/assets/airports.json");
+      list = await res.json();
+    } catch {
+      list = [];
+    }
+    const seen = new Set();
+    list = (Array.isArray(list) ? list : []).filter((a) => {
+      if (!a || !a.code || !a.name || KR_SKIP.has(a.code) || seen.has(a.code)) return false;
+      seen.add(a.code);
+      return true;
+    }).sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
+    const opts = ['<option value="">그외</option>'].concat(
+      list.map((a) => '<option value="' + a.code + '">' + a.name + " (" + a.code + ")</option>")
+    ).join("");
+    airPicks.forEach((el) => {
+      if (!el) return;
+      el.innerHTML = opts;
+      el.value = "";
+    });
+  }
 
   function filterRows(list) {
     const maxPrice = Number(document.getElementById("max-price").value || 0);
-    const days = selectedDays;
     return list.filter((r) => {
-      if (!days.has(r.days)) return false;
-      if (maxPrice && r.price && r.price > maxPrice) return false;
+      if (!selectedDays.has(r.days)) return false;
+      const p = sanePrice(r.price);
+      if (maxPrice && p && p > maxPrice) return false;
       return true;
     });
   }
@@ -154,15 +196,16 @@
     const copy = list.slice();
     const dur = (r) => (r.offer?.durationOutMin || 0) + (r.offer?.durationInMin || 0);
     const stops = (r) => (r.offer?.stopsOut || 0) + (r.offer?.stopsIn || 0);
+    const priceOf = (r) => sanePrice(r.price) || 9e15;
     copy.sort((a, b) => {
-      if (mode === "price") return (a.price || 9e15) - (b.price || 9e15);
-      if (mode === "days-asc") return a.days - b.days || (a.price || 9e15) - (b.price || 9e15);
-      if (mode === "days-desc") return b.days - a.days || (a.price || 9e15) - (b.price || 9e15);
-      if (mode === "out-asc") return a.outbound.localeCompare(b.outbound) || (a.price || 9e15) - (b.price || 9e15);
+      if (mode === "price") return priceOf(a) - priceOf(b);
+      if (mode === "days-asc") return a.days - b.days || priceOf(a) - priceOf(b);
+      if (mode === "days-desc") return b.days - a.days || priceOf(a) - priceOf(b);
+      if (mode === "out-asc") return a.outbound.localeCompare(b.outbound) || priceOf(a) - priceOf(b);
       if (mode === "out-desc") return b.outbound.localeCompare(a.outbound);
-      if (mode === "dest") return a.destName.localeCompare(b.destName, "ko") || (a.price || 9e15) - (b.price || 9e15);
+      if (mode === "dest") return a.destName.localeCompare(b.destName, "ko") || priceOf(a) - priceOf(b);
       if (mode === "duration") return dur(a) - dur(b);
-      if (mode === "direct") return stops(a) - stops(b) || (a.price || 9e15) - (b.price || 9e15);
+      if (mode === "direct") return stops(a) - stops(b) || priceOf(a) - priceOf(b);
       return 0;
     });
     return copy;
@@ -170,21 +213,22 @@
 
   function groupKey(r) {
     const g = groupEl.value;
-    if (g === "dest") return `${r.destName} (${r.dest})`;
+    if (g === "dest") return r.destName + " (" + r.dest + ")";
     if (g === "days") return r.label;
     if (g === "origin") return r.origin;
     return "";
   }
 
   function renderHeat() {
-    const priced = rows.filter((r) => r.price);
+    const priced = rows.filter((r) => sanePrice(r.price));
     if (!priced.length) {
       heatmap.classList.add("hidden");
       return;
     }
     const byOut = {};
     for (const r of priced) {
-      if (!byOut[r.outbound] || r.price < byOut[r.outbound]) byOut[r.outbound] = r.price;
+      const p = sanePrice(r.price);
+      if (!byOut[r.outbound] || p < byOut[r.outbound]) byOut[r.outbound] = p;
     }
     const vals = Object.values(byOut);
     const min = Math.min(...vals);
@@ -196,9 +240,13 @@
         .sort()
         .map((d) => {
           const p = byOut[d];
-          const t = max === min ? 0.3 : (p - min) / (max - min);
-          const bg = `rgba(31,111,91,${0.95 - t * 0.7})`;
-          return `<i style="background:${bg}"><b>${d.slice(5)}</b>${won(p)}</i>`;
+          const t = max === min ? 0 : (p - min) / (max - min);
+          const bgR = Math.round(20 + t * (255 - 20));
+          const bgG = Math.round(90 + t * (246 - 90));
+          const bgB = Math.round(74 + t * (232 - 74));
+          const lum = (0.2126 * bgR + 0.7152 * bgG + 0.0722 * bgB) / 255;
+          const fg = lum > 0.55 ? "#10231c" : "#fff6e8";
+          return "<i style=\"background:rgb(" + bgR + "," + bgG + "," + bgB + ");color:" + fg + "\"><b>" + d.slice(5) + "</b>" + won(p) + "</i>";
         })
         .join("") +
       "</div>";
@@ -207,29 +255,10 @@
   function card(r) {
     const o = r.offer || {};
     const stops = (o.stopsOut || 0) + (o.stopsIn || 0);
-    const stopLabel = stops === 0 ? "직항" : `경유 ${stops}`;
+    const priced = sanePrice(r.price);
+    const stopLabel = !priced ? "네이버에서 확인" : stops === 0 ? "직항" : "경유 " + stops;
     const links = r.links || {};
-    return `<article class="card">
-      <div class="price">${won(r.price)}<small>${r.origin} 왕복 · ${stopLabel}</small></div>
-      <div>
-        <div class="route">${r.origin} → ${r.destName} (${r.dest}) → ${r.origin}</div>
-        <div class="meta">${r.outbound} (${r.outboundDow}) → ${r.inbound} (${r.inboundDow}) · ${r.label}
-          ${o.outFlight ? ` · 가는편 ${o.outFlight} ${o.outDepTime}` : ""}
-          ${o.inFlight ? ` · 오는편 ${o.inFlight} ${o.inDepTime}` : ""}
-          ${o.outAirline ? ` · ${o.outAirline}` : ""}
-        </div>
-        <div class="links">
-          <a href="${links.naver}" target="_blank" rel="noopener">네이버 항공</a>
-          <a href="${links.skyscanner}" target="_blank" rel="noopener">스카이스캐너</a>
-          <a href="${links.google}" target="_blank" rel="noopener">구글 플라이트</a>
-          <a href="${links.kayak}" target="_blank" rel="noopener">카약</a>
-          <a href="${links.hanatour}" target="_blank" rel="noopener">하나투어</a>
-          <a href="${links.modetour}" target="_blank" rel="noopener">모두투어</a>
-          <a href="${links.interpark}" target="_blank" rel="noopener">인터파크</a>
-          <a href="${links.ybtour}" target="_blank" rel="noopener">노랑풍선</a>
-        </div>
-      </div>
-    </article>`;
+    return "<article class=\"card\"><div class=\"price\">" + won(priced) + "<small>" + r.origin + " 왕복 · " + stopLabel + "</small></div><div><div class=\"route\">" + r.origin + " → " + r.destName + " (" + r.dest + ") → " + r.origin + "</div><div class=\"meta\"><b class=\"when\">" + r.outbound + " (" + r.outboundDow + ") → " + r.inbound + " (" + r.inboundDow + ")</b> · " + r.label + (o.outFlight ? " · 가는편 " + o.outFlight + " <b class=\"when\">" + o.outDepTime + "</b>" : "") + (o.inFlight ? " · 오는편 " + o.inFlight + " <b class=\"when\">" + o.inDepTime + "</b>" : "") + (o.outAirline ? " · " + o.outAirline : "") + "</div><div class=\"links\"><a href=\"" + links.naver + "\" target=\"_blank\" rel=\"noopener\">네이버 항공</a><a href=\"" + links.skyscanner + "\" target=\"_blank\" rel=\"noopener\">스카이스캐너</a><a href=\"" + links.google + "\" target=\"_blank\" rel=\"noopener\">구글 플라이트</a><a href=\"" + links.kayak + "\" target=\"_blank\" rel=\"noopener\">카약</a><a href=\"" + links.hanatour + "\" target=\"_blank\" rel=\"noopener\">하나투어</a><a href=\"" + links.modetour + "\" target=\"_blank\" rel=\"noopener\">모두투어</a><a href=\"" + links.interpark + "\" target=\"_blank\" rel=\"noopener\">인터파크</a><a href=\"" + links.ybtour + "\" target=\"_blank\" rel=\"noopener\">노랑풍선</a></div></div></article>";
   }
 
   function renderResults() {
@@ -249,7 +278,7 @@
       groups.get(k).push(r);
     }
     resultsEl.innerHTML = [...groups.entries()]
-      .map(([k, rs]) => `<h3 class="group-title">${k} · ${rs.length}건</h3>` + rs.map(card).join(""))
+      .map(([k, rs]) => "<h3 class=\"group-title\">" + k + " · " + rs.length + "건</h3>" + rs.map(card).join(""))
       .join("");
   }
 
@@ -257,77 +286,150 @@
   groupEl.addEventListener("change", renderResults);
   document.getElementById("max-price").addEventListener("change", renderResults);
 
+  async function postJson(url, payload) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+    return data;
+  }
+
+  async function fetchBatch(jobs, adults, nonstop) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const data = await postJson("/api/search-batch", { jobs, adults, nonstop });
+        return data.rows || [];
+      } catch (e) {
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+      }
+    }
+    throw lastErr || new Error("batch failed");
+  }
+
   async function search() {
     const body = queryBody();
     if (!body.origins.length) return;
+    if (otherOn() && !body.regions.length && !body.dests.length) {
+      preview.textContent = "그외 공항을 1개 이상 선택하세요.";
+      return;
+    }
     searchBtn.disabled = true;
     toolbar.classList.remove("hidden");
     rows = [];
     resultsEl.innerHTML = "";
-    status.textContent = "검색 시작";
+    status.textContent = "검색 준비";
     bar.style.width = "2%";
     try {
-      const res = await fetch("/api/search-stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify(body),
+      const previewData = await postJson("/api/preview", body);
+      const jobs = [];
+      (previewData.dests || []).forEach((block) => {
+        (block.dests || []).forEach((dest) => {
+          (previewData.trips || []).forEach((trip) => {
+            jobs.push({
+              origin: block.origin,
+              dest: dest.code,
+              destName: dest.name,
+              outbound: trip.outbound,
+              inbound: trip.inbound,
+              days: trip.days,
+              nights: trip.nights,
+              label: trip.label,
+            });
+          });
+        });
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        status.textContent = data.error || "검색 실패";
+      if (!jobs.length) {
+        status.textContent = "조회할 조합이 없습니다.";
         return;
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const parts = buf.split("\n\n");
-        buf = parts.pop() || "";
-        for (const block of parts) {
-          const ev = (block.match(/^event: (\w+)/m) || [])[1];
-          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-          if (!dataLine) continue;
-          const data = JSON.parse(dataLine.slice(6));
-          if (ev === "row") {
-            rows.push(data.row);
-            bar.style.width = Math.round((data.done / data.total) * 100) + "%";
-            status.textContent = `${data.done}/${data.total} · 요금 ${rows.filter((r) => r.price).length}건`;
-            if (data.done % 3 === 0 || data.done === data.total) {
-              renderHeat();
-              renderResults();
-            }
-          }
-          if (ev === "done") {
-            status.textContent = `완료 ${data.total}건`;
-            bar.style.width = "100%";
-            renderHeat();
-            renderResults();
-          }
+      const total = jobs.length;
+      const size = 3;
+      let failed = 0;
+      for (let i = 0; i < jobs.length; i += size) {
+        const chunk = jobs.slice(i, i + size);
+        try {
+          const batchRows = await fetchBatch(chunk, body.adults, body.nonstop);
+          batchRows.forEach((row) => {
+            const idx = rows.findIndex((r) => r.origin === row.origin && r.dest === row.dest && r.outbound === row.outbound && r.inbound === row.inbound);
+            if (idx >= 0) rows[idx] = row;
+            else rows.push(row);
+          });
+        } catch (e) {
+          failed += chunk.length;
+          chunk.forEach((j) => {
+            rows.push({
+              origin: j.origin,
+              dest: j.dest,
+              destName: j.destName || j.dest,
+              outbound: j.outbound,
+              inbound: j.inbound,
+              days: j.days,
+              nights: j.nights,
+              label: j.label,
+              price: null,
+              offer: null,
+              links: {},
+            });
+          });
         }
+        const done = Math.min(i + size, total);
+        bar.style.width = Math.round((done / total) * 100) + "%";
+        status.textContent = done + "/" + total + " · 요금 " + rows.filter((r) => sanePrice(r.price)).length + "건" + (failed ? " · 실패 " + failed : "");
+        renderHeat();
+        renderResults();
       }
+      status.textContent = "완료 " + total + "건 · 요금 " + rows.filter((r) => sanePrice(r.price)).length + "건" + (failed ? " · 일부 실패 " + failed : "");
+      bar.style.width = "100%";
+      renderHeat();
+      renderResults();
     } catch (e) {
-      status.textContent = "연결 오류: " + e.message;
+      if (myGen !== searchGen || (e && e.name === "AbortError")) return;
+      if (rows.length) {
+        status.textContent = "일부만 조회됨 · " + e.message;
+        renderHeat();
+        renderResults();
+      } else {
+        status.textContent = "연결 오류: " + e.message;
+      }
     } finally {
-      searchBtn.disabled = false;
+      if (myGen === searchGen) {
+        searching = false;
+        searchBtn.disabled = false;
+        if (retryBtn) retryBtn.disabled = true;
+      }
     }
   }
 
   searchBtn.addEventListener("click", search);
+  if (retryBtn) {
+    retryBtn.addEventListener("click", () => {
+      if (retryBtn.disabled) return;
+      search();
+    });
+  }
+  document.getElementById("adults").addEventListener("change", previewCount);
+  document.getElementById("nonstop").addEventListener("change", previewCount);
 
   async function loadMeta() {
     const res = await fetch("/api/meta");
     const data = await res.json();
     const origin = origins()[0] || "PUS";
     const deals = data.deals[origin] || data.deals.PUS;
-    dealLinks.innerHTML = deals
-      .map((d) => `<a href="${d.url}" target="_blank" rel="noopener">${d.name}</a>`)
-      .join("");
+    dealLinks.innerHTML = deals.map((d) => "<a href=\"" + d.url + "\" target=\"_blank\" rel=\"noopener\">" + d.name + "</a>").join("");
   }
 
+  document.querySelectorAll("[data-region]").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.region === "other");
+  });
   setDefaultDates();
   renderDurations();
   loadMeta();
+  fillAirportSelects();
+  syncOtherWrap();
+  previewCount();
 })();

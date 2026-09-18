@@ -53,6 +53,11 @@ input[type="date"], input[type="number"], input[type="text"], #extra-dests, sele
 .grid-2 { grid-template-columns: 1fr 1fr; }
 .grid-3 { grid-template-columns: 1fr 1fr 1.4fr; align-items: end; }
 .chips, .origins { display: flex; flex-wrap: wrap; gap: 8px; }
+.other-air-wrap {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px;
+}
+.other-air-wrap.hidden { display: none; }
+.air-pick { width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .chip {
   border: 1px solid var(--line); background: #fff; border-radius: 999px;
   padding: 7px 12px; cursor: pointer; font-size: 13px;
@@ -61,11 +66,13 @@ input[type="date"], input[type="number"], input[type="text"], #extra-dests, sele
 .chip input { accent-color: var(--accent); }
 .checkline { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
 .actions { display: flex; gap: 14px; align-items: center; margin-top: 8px; }
-#search-btn {
+#search-btn, #retry-btn {
   background: var(--accent); color: #fff; border: 0; border-radius: 12px;
   padding: 12px 18px; font-weight: 800; cursor: pointer;
 }
+#retry-btn { background: var(--teal); }
 #search-btn:disabled { opacity: 0.5; cursor: wait; }
+#retry-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .hidden { display: none !important; }
 .progress { height: 8px; background: #eee6d8; border-radius: 99px; overflow: hidden; margin-bottom: 10px; }
 #progress-bar { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--teal), var(--accent)); }
@@ -78,6 +85,7 @@ input[type="date"], input[type="number"], input[type="text"], #extra-dests, sele
 .price { font-size: 22px; font-weight: 800; color: var(--teal); white-space: nowrap; }
 .price small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
 .meta { font-size: 13px; color: var(--muted); }
+.when { color: var(--ink); font-weight: 800; }
 .route { font-weight: 800; font-size: 16px; }
 .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .links a {
@@ -88,10 +96,13 @@ input[type="date"], input[type="number"], input[type="text"], #extra-dests, sele
 .heat {
   display: flex; gap: 6px; flex-wrap: wrap;
 }
-.heat b { display: block; font-size: 11px; color: var(--muted); }
+.heat b {
+  display: block; font-size: 11px; color: inherit; font-weight: 800; letter-spacing: 0.02em;
+}
 .heat i {
-  display: inline-flex; min-width: 72px; justify-content: center; padding: 8px;
-  border-radius: 10px; font-style: normal; font-size: 12px; color: #fff;
+  display: inline-flex; flex-direction: column; align-items: center; min-width: 86px;
+  justify-content: center; padding: 8px 10px; border-radius: 10px; font-style: normal;
+  font-size: 12px; font-weight: 800; line-height: 1.25;
 }
 .deal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
 .deal-grid a {

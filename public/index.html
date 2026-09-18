@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>윈도우항공 · 김해/김포 기간 왕복</title>
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css?v=5" />
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -45,13 +45,24 @@
       <div>
         <span class="lbl">목적지</span>
         <div class="chips">
-          <button type="button" class="chip on" data-region="japan">일본</button>
+          <button type="button" class="chip" data-region="japan">일본</button>
           <button type="button" class="chip" data-region="sea">동남아</button>
           <button type="button" class="chip" data-region="greater-china">중화권</button>
           <button type="button" class="chip" data-region="pacific">괌</button>
           <button type="button" class="chip" data-region="domestic">국내</button>
+          <button type="button" class="chip on" data-region="other" id="other-chip">그외</button>
         </div>
-        <input id="extra-dests" placeholder="추가 IATA, 쉼표로 (예: BKI, DPS)" />
+        <div id="other-air-wrap" class="other-air-wrap">
+          <label>그외 공항 1
+            <select id="air1" class="air-pick"></select>
+          </label>
+          <label>그외 공항 2
+            <select id="air2" class="air-pick"></select>
+          </label>
+          <label>그외 공항 3
+            <select id="air3" class="air-pick"></select>
+          </label>
+        </div>
       </div>
 
       <div class="grid-3">
@@ -110,6 +121,15 @@
   <footer>
     개인용 탐색기 · 요금은 네이버 항공권 검색 결과를 모은 참고가입니다. 결제 전 공식/OTA에서 재확인하세요.
   </footer>
-  <script src="/assets/app.js"></script>
+  <script src="/assets/app.js?v=8"></script>
+  <script>
+    (function () {
+      document.querySelectorAll("[data-region]").forEach(function (btn) {
+        btn.classList.toggle("on", btn.getAttribute("data-region") === "other");
+      });
+      var wrap = document.getElementById("other-air-wrap");
+      if (wrap) wrap.classList.remove("hidden");
+    })();
+  </script>
 </body>
 </html>

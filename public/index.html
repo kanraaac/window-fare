@@ -51,6 +51,7 @@
           <button type="button" class="chip" data-region="pacific">괌</button>
           <button type="button" class="chip" data-region="domestic">국내</button>
           <button type="button" class="chip on" data-region="other" id="other-chip">그외</button>
+          <label class="chip check-chip"><input type="checkbox" id="nonstop" /> 직항만</label>
         </div>
         <div id="other-air-wrap" class="other-air-wrap">
           <label>그외 공항 1
@@ -69,7 +70,6 @@
         <label>성인
           <input type="number" id="adults" min="1" max="9" value="1" />
         </label>
-        <label class="checkline"><input type="checkbox" id="nonstop" /> 직항만</label>
         <label>최대 금액(원, 비우면 무제한)
           <input type="number" id="max-price" min="0" step="10000" placeholder="예: 300000" />
         </label>
@@ -129,6 +129,12 @@
         btn.classList.toggle("on", btn.getAttribute("data-region") === "other");
       });
       var wrap = document.getElementById("other-air-wrap");
+      if (wrap) wrap.classList.remove("hidden");
+    })();
+  </script>
+</body>
+</html>
+);
       if (wrap) wrap.classList.remove("hidden");
     })();
   </script>

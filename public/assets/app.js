@@ -4,6 +4,7 @@
   const durBox = document.getElementById("duration-chips");
   const preview = document.getElementById("preview");
   const searchBtn = document.getElementById("search-btn");
+  const retryBtn = document.getElementById("retry-btn");
   const toolbar = document.getElementById("toolbar");
   const bar = document.getElementById("progress-bar");
   const status = document.getElementById("status");
@@ -18,6 +19,10 @@
 
   let rows = [];
   let selectedDays = new Set();
+  let searching = false;
+  let searchGen = 0;
+  let startedQuery = "";
+  let abortCtl = null;
 
   function iso(d) {
     return d.toISOString().slice(0, 10);
@@ -107,7 +112,15 @@
     };
   }
 
+  function queryKey() {
+    return JSON.stringify(queryBody());
+  }
+  function syncRetryBtn() {
+    if (!retryBtn) return;
+    retryBtn.disabled = !(searching && queryKey() !== startedQuery);
+  }
   async function previewCount() {
+    syncRetryBtn();
     if (!startEl.value || !endEl.value) return;
     const body = queryBody();
     if (!body.origins.length || !body.minDays) {
@@ -291,6 +304,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: abortCtl ? abortCtl.signal : undefined,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
@@ -318,6 +332,12 @@
       preview.textContent = "그외 공항을 1개 이상 선택하세요.";
       return;
     }
+    if (abortCtl) abortCtl.abort();
+    abortCtl = new AbortController();
+    const myGen = ++searchGen;
+    searching = true;
+    startedQuery = JSON.stringify(queryBody());
+    if (retryBtn) retryBtn.disabled = true;
     searchBtn.disabled = true;
     toolbar.classList.remove("hidden");
     rows = [];
@@ -351,6 +371,7 @@
       const size = 3;
       let failed = 0;
       for (let i = 0; i < jobs.length; i += size) {
+        if (myGen !== searchGen) return;
         const chunk = jobs.slice(i, i + size);
         try {
           const batchRows = await fetchBatch(chunk, body.adults, body.nonstop);
@@ -360,6 +381,8 @@
             else rows.push(row);
           });
         } catch (e) {
+          if (e && e.name === "AbortError") return;
+          if (myGen !== searchGen) return;
           failed += chunk.length;
           chunk.forEach((j) => {
             rows.push({

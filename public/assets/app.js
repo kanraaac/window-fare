@@ -290,13 +290,32 @@
       "</div>";
   }
 
+  function fmtDur(min) {
+    min = Number(min) || 0;
+    if (!min) return "-";
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h && m) return h + "시간 " + m + "분";
+    if (h) return h + "시간";
+    return m + "분";
+  }
+  function stopText(n) {
+    n = Number(n) || 0;
+    return n === 0 ? "직항" : "경유 " + n + "회";
+  }
   function card(r) {
     const o = r.offer || {};
-    const stops = (o.stopsOut || 0) + (o.stopsIn || 0);
     const priced = sanePrice(r.price);
-    const stopLabel = !priced ? "네이버에서 확인" : stops === 0 ? "직항" : "경유 " + stops;
     const links = r.links || {};
-    return "<article class=\"card\"><div class=\"price\">" + won(priced) + "<small>" + r.origin + " 왕복 · " + stopLabel + "</small></div><div><div class=\"route\">" + r.origin + " → " + r.destName + " (" + r.dest + ") → " + r.origin + "</div><div class=\"meta\"><b class=\"when\">" + r.outbound + " (" + r.outboundDow + ") → " + r.inbound + " (" + r.inboundDow + ")</b> · " + r.label + (o.outFlight ? " · 가는편 " + o.outFlight + " <b class=\"when\">" + o.outDepTime + "</b>" : "") + (o.inFlight ? " · 오는편 " + o.inFlight + " <b class=\"when\">" + o.inDepTime + "</b>" : "") + (o.outAirline ? " · " + o.outAirline : "") + "</div><div class=\"links\"><a href=\"" + links.naver + "\" target=\"_blank\" rel=\"noopener\">네이버 항공</a><a href=\"" + links.skyscanner + "\" target=\"_blank\" rel=\"noopener\">스카이스캐너</a><a href=\"" + links.google + "\" target=\"_blank\" rel=\"noopener\">구글 플라이트</a><a href=\"" + links.kayak + "\" target=\"_blank\" rel=\"noopener\">카약</a><a href=\"" + links.hanatour + "\" target=\"_blank\" rel=\"noopener\">하나투어</a><a href=\"" + links.modetour + "\" target=\"_blank\" rel=\"noopener\">모두투어</a><a href=\"" + links.interpark + "\" target=\"_blank\" rel=\"noopener\">인터파크</a><a href=\"" + links.ybtour + "\" target=\"_blank\" rel=\"noopener\">노랑풍선</a></div></div></article>";
+    const outCls = (o.stopsOut || 0) === 0 ? "direct" : "via";
+    const inCls = (o.stopsIn || 0) === 0 ? "direct" : "via";
+    const outLine = priced
+      ? "<div class=\"leg\"><span class=\"leg-k\">가는편</span><span class=\"badge " + outCls + "\">" + stopText(o.stopsOut) + "</span><span class=\"dur\">" + fmtDur(o.durationOutMin) + "</span><span>" + (o.outAirline || "") + " " + (o.outFlight || "") + " <b class=\"when\">" + (o.outDepTime || "") + "</b></span></div>"
+      : "";
+    const inLine = priced
+      ? "<div class=\"leg\"><span class=\"leg-k\">오는편</span><span class=\"badge " + inCls + "\">" + stopText(o.stopsIn) + "</span><span class=\"dur\">" + fmtDur(o.durationInMin) + "</span><span>" + (o.inAirline || "") + " " + (o.inFlight || "") + " <b class=\"when\">" + (o.inDepTime || "") + "</b></span></div>"
+      : "<div class=\"leg\"><span class=\"leg-k\">요금</span><span class=\"badge via\">네이버에서 확인</span><span class=\"dur\">-</span><span></span></div>";
+    return "<article class=\"card\"><div class=\"price\">" + won(priced) + "<small>" + r.origin + " 왕복 · " + r.label + "</small></div><div class=\"card-body\"><div class=\"route\">" + r.origin + " → " + r.destName + " (" + r.dest + ") → " + r.origin + "</div><div class=\"when-line\"><b class=\"when\">" + r.outbound + " (" + r.outboundDow + ")</b> → <b class=\"when\">" + r.inbound + " (" + r.inboundDow + ")</b></div><div class=\"legs\">" + outLine + inLine + "</div><div class=\"links\"><a href=\"" + (links.naver || "#") + "\" target=\"_blank\" rel=\"noopener\">네이버 항공</a><a href=\"" + (links.skyscanner || "#") + "\" target=\"_blank\" rel=\"noopener\">스카이스캐너</a><a href=\"" + (links.google || "#") + "\" target=\"_blank\" rel=\"noopener\">구글 플라이트</a><a href=\"" + (links.kayak || "#") + "\" target=\"_blank\" rel=\"noopener\">카약</a><a href=\"" + (links.hanatour || "#") + "\" target=\"_blank\" rel=\"noopener\">하나투어</a><a href=\"" + (links.modetour || "#") + "\" target=\"_blank\" rel=\"noopener\">모두투어</a><a href=\"" + (links.interpark || "#") + "\" target=\"_blank\" rel=\"noopener\">인터파크</a><a href=\"" + (links.ybtour || "#") + "\" target=\"_blank\" rel=\"noopener\">노랑풍선</a></div></div></article>";
   }
 
   function renderResults() {

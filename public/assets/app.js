@@ -163,12 +163,37 @@
         el.checked = true;
         el.parentElement.classList.add("on");
       }
+      renderAirportOptions();
       previewCount();
     });
   });
   startEl.addEventListener("change", renderDurations);
   endEl.addEventListener("change", renderDurations);
   airPicks.forEach((el) => el && el.addEventListener("change", previewCount));
+
+  let allAirports = [];
+  let nonstopMap = { PUS: [], GMP: [], ICN: [] };
+
+  function nonstopCodes() {
+    const set = new Set();
+    origins().forEach((o) => (nonstopMap[o] || []).forEach((c) => set.add(c)));
+    return set;
+  }
+
+  function renderAirportOptions() {
+    const keep = airPicks.map((el) => (el && el.value) || "");
+    const nonstop = !!(document.getElementById("nonstop") && document.getElementById("nonstop").checked);
+    const allowed = nonstop ? nonstopCodes() : null;
+    let list = allAirports.filter((a) => !allowed || allowed.has(a.code));
+    const opts = ['<option value="">그외</option>'].concat(
+      list.map((a) => '<option value="' + a.code + '">' + a.name + " (" + a.code + ")</option>")
+    ).join("");
+    airPicks.forEach((el, i) => {
+      if (!el) return;
+      el.innerHTML = opts;
+      el.value = keep[i] && (!allowed || allowed.has(keep[i])) ? keep[i] : "";
+    });
+  }
 
   async function fillAirportSelects() {
     let list = [];
@@ -178,20 +203,20 @@
     } catch {
       list = [];
     }
+    try {
+      const rr = await fetch("/assets/nonstop-routes.json");
+      const data = await rr.json();
+      if (data && typeof data === "object") nonstopMap = data;
+    } catch {
+      /* keep defaults */
+    }
     const seen = new Set();
-    list = (Array.isArray(list) ? list : []).filter((a) => {
+    allAirports = (Array.isArray(list) ? list : []).filter((a) => {
       if (!a || !a.code || !a.name || KR_SKIP.has(a.code) || seen.has(a.code)) return false;
       seen.add(a.code);
       return true;
     }).sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
-    const opts = ['<option value="">그외</option>'].concat(
-      list.map((a) => '<option value="' + a.code + '">' + a.name + " (" + a.code + ")</option>")
-    ).join("");
-    airPicks.forEach((el) => {
-      if (!el) return;
-      el.innerHTML = opts;
-      el.value = "";
-    });
+    renderAirportOptions();
   }
 
   function filterRows(list) {
@@ -436,7 +461,7 @@
     });
   }
   document.getElementById("adults").addEventListener("change", previewCount);
-  document.getElementById("nonstop").addEventListener("change", previewCount);
+  document.getElementById("nonstop").addEventListener("change", () => { renderAirportOptions(); previewCount(); });
 
   async function loadMeta() {
     const res = await fetch("/api/meta");

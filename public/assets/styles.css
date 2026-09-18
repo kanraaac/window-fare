@@ -52,7 +52,9 @@ input[type="date"], input[type="number"], input[type="text"], #extra-dests, sele
 .grid-2, .grid-3 { display: grid; gap: 12px; margin: 12px 0; }
 .grid-2 { grid-template-columns: 1fr 1fr; }
 .grid-3 { grid-template-columns: 1fr 1fr 1.4fr; align-items: end; }
-.chips, .origins { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips, .origins { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.check-chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.check-chip input { margin: 0; }
 .other-air-wrap {
   display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px;
 }

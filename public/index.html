@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>윈도우항공 · 김해/김포 기간 왕복</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=10" />
+  <link rel="stylesheet" href="/assets/styles.css?v=11" />
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -12,7 +12,7 @@
     <div class="brand">
       <span class="mark">PUS</span>
       <div>
-        <h1>윈도우항공 <span class="ver" id="app-ver">v1.5.1</span></h1>
+        <h1>윈도우항공 <span class="ver" id="app-ver">v1.6.0</span></h1>
         <p>가능한 기간 안의 왕복 후보를 전부 만들고, 싼 것부터 봅니다.</p>
       </div>
     </div>
@@ -112,6 +112,12 @@
     <section id="heatmap" class="heatmap hidden"></section>
     <section id="results"></section>
 
+    <section id="meta-panel" class="deals hidden">
+      <h2>현재 조건으로 메타검색에서 이어보기</h2>
+      <p class="hint">목적지별 최저가 일정을 각 사이트에서 바로 엽니다.</p>
+      <div id="meta-rows"></div>
+    </section>
+
     <section class="deals">
       <h2>메타검색 · 여행사 특가</h2>
       <p class="hint">네이버 실시간 요금과 함께, 스카이스캐너/여행사에서 한 번 더 대조하세요.</p>
@@ -122,7 +128,7 @@
   <footer>
     개인용 탐색기 · 요금은 네이버 항공권 검색 결과를 모은 참고가입니다. 결제 전 공식/OTA에서 재확인하세요.
   </footer>
-  <script src="/assets/app.js?v=14"></script>
+  <script src="/assets/app.js?v=15"></script>
   <script>
     (function () {
       document.querySelectorAll("[data-region]").forEach(function (btn) {

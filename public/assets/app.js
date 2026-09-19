@@ -319,6 +319,7 @@
   }
 
   function renderResults() {
+    renderDatePanel();
     renderMetaPanel();
     const list = sortRows(filterRows(rows));
     if (!list.length) {
@@ -338,6 +339,39 @@
     resultsEl.innerHTML = [...groups.entries()]
       .map(([k, rs]) => "<h3 class=\"group-title\">" + k + " · " + rs.length + "건</h3>" + rs.map(card).join(""))
       .join("");
+  }
+
+  function renderDatePanel() {
+    const panel = document.getElementById("date-panel");
+    const box = document.getElementById("date-rows");
+    if (!panel || !box) return;
+    const priced = rows.filter((r) => sanePrice(r.price) && r.links && r.links.naver);
+    if (!priced.length) {
+      panel.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+    const byDate = new Map();
+    for (const r of priced) {
+      if (!byDate.has(r.outbound)) byDate.set(r.outbound, []);
+      byDate.get(r.outbound).push(r);
+    }
+    const dates = [...byDate.keys()].sort();
+    const oU = (origins()[0] || "PUS").toUpperCase();
+    const oL = oU.toLowerCase();
+    const ym = (d) => (d && d.length >= 7 ? d.slice(2, 4) + d.slice(5, 7) : "");
+    const exLinks = [
+      ["스카이스캐너 달력", "https://www.skyscanner.co.kr/transport/flights-from/" + oL + "/?oym=" + ym(startEl.value || dates[0]) + "&iym=" + ym(endEl.value || dates[dates.length - 1])],
+      ["카약 탐색", "https://www.kayak.co.kr/explore?airport=" + oU],
+      ["네이버 어디든지", "https://flight.naver.com/flights/everywhere/monthly/" + oU]
+    ];
+    panel.classList.remove("hidden");
+    box.innerHTML = "<div class=\"links explore-links\">" + exLinks.map((s) => "<a href=\"" + s[1] + "\" target=\"_blank\" rel=\"noopener\">" + s[0] + "</a>").join("") + "</div>" +
+      dates.map((d) => {
+        const rs = byDate.get(d).sort((a, b) => sanePrice(a.price) - sanePrice(b.price)).slice(0, 3);
+        const items = rs.map((r) => "<div class=\"date-item\"><strong>" + r.destName + "</strong><span>" + won(sanePrice(r.price)) + " · " + r.label + "</span><span class=\"links\"><a href=\"" + r.links.naver + "\" target=\"_blank\" rel=\"noopener\">네이버</a><a href=\"" + r.links.skyscanner + "\" target=\"_blank\" rel=\"noopener\">스카이</a></span></div>").join("");
+        return "<div class=\"date-row\"><div class=\"date-head\"><b class=\"when\">" + d + " (" + (rs[0].outboundDow || "") + ")</b><span>출발</span></div>" + items + "</div>";
+      }).join("");
   }
 
   function renderMetaPanel() {

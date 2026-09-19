@@ -95,17 +95,6 @@ input[type="date"], input[type="number"], input[type="text"], #extra-dests, sele
   border-radius: 999px; padding: 4px 8px; background: #f7f1e6;
 }
 .group-title { margin: 22px 0 8px; font-size: 16px; }
-.meta-row { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 8px 0; }
-.meta-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 8px; font-size: 14px; }
-.meta-head strong { font-size: 16px; }
-.meta-head span { color: var(--muted); font-weight: 600; }
-.explore-links { margin-bottom: 10px; }
-.date-row { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 8px 0; }
-.date-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; font-size: 14px; color: var(--muted); font-weight: 700; }
-.date-head .when { font-size: 17px; }
-.date-item { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: center; padding: 6px 0; border-top: 1px dashed var(--line); font-size: 14px; }
-.date-item strong { font-size: 15px; }
-.date-item > span:nth-child(2) { color: var(--muted); font-weight: 700; }
 .heat {
   display: flex; gap: 6px; flex-wrap: wrap;
 }

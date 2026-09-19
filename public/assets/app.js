@@ -319,8 +319,6 @@
   }
 
   function renderResults() {
-    renderDatePanel();
-    renderMetaPanel();
     const list = sortRows(filterRows(rows));
     if (!list.length) {
       resultsEl.innerHTML = "<p class='hint'>표시할 결과가 없습니다. 필터를 느슨하게 해보세요.</p>";
@@ -339,64 +337,6 @@
     resultsEl.innerHTML = [...groups.entries()]
       .map(([k, rs]) => "<h3 class=\"group-title\">" + k + " · " + rs.length + "건</h3>" + rs.map(card).join(""))
       .join("");
-  }
-
-  function renderDatePanel() {
-    const panel = document.getElementById("date-panel");
-    const box = document.getElementById("date-rows");
-    if (!panel || !box) return;
-    const priced = rows.filter((r) => sanePrice(r.price) && r.links && r.links.naver);
-    if (!priced.length) {
-      panel.classList.add("hidden");
-      box.innerHTML = "";
-      return;
-    }
-    const byDate = new Map();
-    for (const r of priced) {
-      if (!byDate.has(r.outbound)) byDate.set(r.outbound, []);
-      byDate.get(r.outbound).push(r);
-    }
-    const dates = [...byDate.keys()].sort();
-    const oU = (origins()[0] || "PUS").toUpperCase();
-    const oL = oU.toLowerCase();
-    const ym = (d) => (d && d.length >= 7 ? d.slice(2, 4) + d.slice(5, 7) : "");
-    const exLinks = [
-      ["스카이스캐너 달력", "https://www.skyscanner.co.kr/transport/flights-from/" + oL + "/?oym=" + ym(startEl.value || dates[0]) + "&iym=" + ym(endEl.value || dates[dates.length - 1])],
-      ["카약 탐색", "https://www.kayak.co.kr/explore?airport=" + oU],
-      ["네이버 어디든지", "https://flight.naver.com/flights/everywhere/monthly/" + oU]
-    ];
-    panel.classList.remove("hidden");
-    box.innerHTML = "<div class=\"links explore-links\">" + exLinks.map((s) => "<a href=\"" + s[1] + "\" target=\"_blank\" rel=\"noopener\">" + s[0] + "</a>").join("") + "</div>" +
-      dates.map((d) => {
-        const rs = byDate.get(d).sort((a, b) => sanePrice(a.price) - sanePrice(b.price)).slice(0, 3);
-        const items = rs.map((r) => "<div class=\"date-item\"><strong>" + r.destName + "</strong><span>" + won(sanePrice(r.price)) + " · " + r.label + "</span><span class=\"links\"><a href=\"" + r.links.naver + "\" target=\"_blank\" rel=\"noopener\">네이버</a><a href=\"" + r.links.skyscanner + "\" target=\"_blank\" rel=\"noopener\">스카이</a></span></div>").join("");
-        return "<div class=\"date-row\"><div class=\"date-head\"><b class=\"when\">" + d + " (" + (rs[0].outboundDow || "") + ")</b><span>출발</span></div>" + items + "</div>";
-      }).join("");
-  }
-
-  function renderMetaPanel() {
-    const panel = document.getElementById("meta-panel");
-    const box = document.getElementById("meta-rows");
-    if (!panel || !box) return;
-    const best = new Map();
-    for (const r of rows) {
-      const p = sanePrice(r.price);
-      if (!p || !r.links || !r.links.naver) continue;
-      const k = r.origin + ">" + r.dest;
-      if (!best.has(k) || p < sanePrice(best.get(k).price)) best.set(k, r);
-    }
-    if (!best.size) {
-      panel.classList.add("hidden");
-      box.innerHTML = "";
-      return;
-    }
-    const items = [...best.values()].sort((a, b) => sanePrice(a.price) - sanePrice(b.price));
-    panel.classList.remove("hidden");
-    box.innerHTML = items.map((r) => {
-      const links = r.links || {};
-      const sites = [["네이버 항공", links.naver], ["스카이스캐너", links.skyscanner], ["구글 플라이트", links.google], ["카약", links.kayak]];
-      return "<div class=\"meta-row\"><div class=\"meta-head\"><strong>" + r.destName + " (" + r.dest + ")</strong><span>" + won(sanePrice(r.price)) + " · " + r.origin + " 출발 <b class=\"when\">" + r.outbound + " (" + r.outboundDow + ")</b> → <b class=\"when\">" + r.inbound + " (" + r.inboundDow + ")</b> · " + r.label + "</span></div><div class=\"links\">" + sites.filter((s) => s[1]).map((s) => "<a href=\"" + s[1] + "\" target=\"_blank\" rel=\"noopener\">" + s[0] + "</a>").join("") + "</div></div>";
-    }).join("");
   }
 
   sortEl.addEventListener("change", renderResults);

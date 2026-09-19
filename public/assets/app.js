@@ -310,7 +310,7 @@
     const outCls = (o.stopsOut || 0) === 0 ? "direct" : "via";
     const inCls = (o.stopsIn || 0) === 0 ? "direct" : "via";
     const outLine = priced
-      ? "<div class=\"leg\"><span class=\"leg-k\">가는편</span><span class=\"badge " + outCls + "\">" + stopText(o.stopsOut) + "</span><span>" + (o.outAirline || "") + " " + (o.outFlight || "") + " <b class=\"dep\">" + (o.outDepTime || "") + "</b> <span class=\"dur-inline\">(" + fmtDur(o.durationOutMin) + ")</span></span></div>
+      ? "<div class=\"leg\"><span class=\"leg-k\">가는편</span><span class=\"badge " + outCls + "\">" + stopText(o.stopsOut) + "</span><span>" + (o.outAirline || "") + " " + (o.outFlight || "") + " <b class=\"dep\">" + (o.outDepTime || "") + "</b> <span class=\"dur-inline\">(" + fmtDur(o.durationOutMin) + ")</span></span></div>"
       : "";
     const inLine = priced
       ? "<div class=\"leg\"><span class=\"leg-k\">오는편</span><span class=\"badge " + inCls + "\">" + stopText(o.stopsIn) + "</span><span class=\"dur\">" + fmtDur(o.durationInMin) + "</span><span>" + (o.inAirline || "") + " " + (o.inFlight || "") + " <b class=\"when\">" + (o.inDepTime || "") + "</b></span></div>"

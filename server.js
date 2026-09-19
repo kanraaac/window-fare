@@ -73,6 +73,15 @@ const DEST_INDEX = {};
 for (const list of Object.values(DESTINATIONS)) {
   for (const d of list) DEST_INDEX[d.code] = d;
 }
+const WORLD_NAMES = {};
+try {
+  const rawAir = fs.readFileSync(path.join(__dirname, "public", "assets", "airports.json"), "utf8");
+  for (const a of JSON.parse(rawAir)) {
+    if (a && a.code && a.name) WORLD_NAMES[String(a.code).toUpperCase()] = a.name;
+  }
+} catch {
+  /* optional */
+}
 
 const cache = new Map();
 const CACHE_MS = 20 * 60 * 1000;
@@ -196,7 +205,7 @@ function buildPayload(origin, dest, outbound, inbound, adults, nonstop) {
         isIndividual: false,
         isLowCarbonEmission: false,
         isSameAirlines: false,
-        isSameDepArrAirport: true,
+        isSameDepArrAirport: false,
         isTravelClub: false,
         minFare: {},
         viaCount: [],
@@ -209,25 +218,62 @@ function buildPayload(origin, dest, outbound, inbound, adults, nonstop) {
   };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function eventScore(ev) {
+  if (!ev) return -1;
+  const priced = lowestFromStatus(ev) ? 1 : 0;
+  const completed = ev.status?.isCompleted ? 1 : 0;
+  const fares = ev.fareMappings?.length || 0;
+  return priced * 1e12 + completed * 1e9 + fares;
+}
+
+function betterEvent(a, b) {
+  if (!b) return a;
+  if (!a) return b;
+  return eventScore(b) >= eventScore(a) ? b : a;
+}
+
 function parseSse(text) {
-  const events = [];
+  let best = null;
   for (const line of String(text).split("\n")) {
     if (!line.startsWith("data: ")) continue;
     try {
-      events.push(JSON.parse(line.slice(6)));
+      best = betterEvent(best, JSON.parse(line.slice(6)));
     } catch {
-      /* skip */
+      /* skip truncated frames */
     }
   }
-  if (!events.length) return null;
-  let best = events[events.length - 1];
-  for (const ev of events) {
-    const fares = ev.fareMappings?.length || 0;
-    const bestFares = best.fareMappings?.length || 0;
-    if (fares > bestFares) best = ev;
-    if (ev.status?.isCompleted) best = ev;
-  }
   return best;
+}
+
+function cacheKey(origin, dest, outbound, inbound, adults, nonstop) {
+  return [origin, dest, outbound, inbound, adults, nonstop ? 1 : 0].join("|");
+}
+
+function splitItineraryIds(raw) {
+  if (Array.isArray(raw) && raw.length >= 2) return raw.map(String);
+  const s = String(raw || "");
+  const m = s.match(/^(\d{8}[^-]*(?:\+[^-]*)*)-(\d{8}[^-]*(?:\+[^-]*)*)$/);
+  if (m) return [m[1], m[2]];
+  const i = s.indexOf("-");
+  if (i > 0) return [s.slice(0, i), s.slice(i + 1)];
+  return [];
+}
+
+function fareAmount(fare) {
+  const n = fare?.adult?.totalFare ?? fare?.adult?.fare ?? fare?.totalFare ?? fare?.price;
+  return typeof n === "number" && n > 0 ? n : 0;
+}
+
+function sanePrice(n) {
+  return typeof n === "number" && Number.isFinite(n) && n >= 1000 && n <= 50000000 ? Math.round(n) : null;
+}
+function lowestFromStatus(data) {
+  const low = data?.status?.lowestFare || {};
+  return sanePrice(low.direct) || sanePrice(low.a01) || sanePrice(low.oneStop) || sanePrice(low.multiStop) || sanePrice(data?.status?.priceRange?.min) || null;
 }
 
 function pickBestOffer(data) {
@@ -237,16 +283,15 @@ function pickBestOffer(data) {
   const airports = data.status?.airportsCodeMap || {};
   let best = null;
   for (const mapping of data.fareMappings || []) {
-    const ids = String(mapping.itineraryIds || "").split("-");
-    if (ids.length < 2) continue;
-    const out = itineraries.get(ids[0]);
-    const inn = itineraries.get(ids[1]);
+    const ids = splitItineraryIds(mapping.itineraryIds);
+    const out = ids[0] ? itineraries.get(ids[0]) : null;
+    const inn = ids[1] ? itineraries.get(ids[1]) : null;
     const fares = (mapping.fares || [])
-      .filter((f) => f?.adult?.totalFare > 0)
-      .sort((a, b) => a.adult.totalFare - b.adult.totalFare);
+      .filter((f) => fareAmount(f) > 0)
+      .sort((a, b) => fareAmount(a) - fareAmount(b));
     if (!fares.length) continue;
     const fare = fares[0];
-    const price = fare.adult.totalFare;
+    const price = fareAmount(fare);
     if (best && price >= best.price) continue;
     const outSegs = out?.segments || [];
     const inSegs = inn?.segments || [];
@@ -285,12 +330,46 @@ function pickBestOffer(data) {
   return best;
 }
 
-async function searchNaver(origin, dest, outbound, inbound, adults, nonstop) {
-  const key = [origin, dest, outbound, inbound, adults, nonstop ? 1 : 0].join("|");
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.t < CACHE_MS) return hit.v;
+async function readNaverBody(res, timeoutMs) {
+  if (!res.body || typeof res.body.getReader !== "function") {
+    return parseSse(await res.text());
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let best = null;
+  const t0 = Date.now();
+  try {
+    while (true) {
+      if (Date.now() - t0 > timeoutMs) break;
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          best = betterEvent(best, JSON.parse(line.slice(6)));
+        } catch {
+          /* skip */
+        }
+      }
+      if (best?.status?.isCompleted && lowestFromStatus(best)) break;
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* ignore */
+    }
+  }
+  return best;
+}
+
+async function searchNaverOnce(origin, dest, outbound, inbound, adults, nonstop) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 28000);
+  const timer = setTimeout(() => controller.abort(), 60000);
   try {
     const res = await fetch(NAVER_INTL, {
       method: "POST",
@@ -305,27 +384,44 @@ async function searchNaver(origin, dest, outbound, inbound, adults, nonstop) {
       body: JSON.stringify(buildPayload(origin, dest, outbound, inbound, adults, nonstop)),
       signal: controller.signal,
     });
-    const text = await res.text();
-    if (!res.ok) {
-      const v = { ok: false, error: `naver ${res.status}` };
-      cache.set(key, { t: Date.now(), v });
-      return v;
-    }
-    const data = parseSse(text);
+    if (res.status === 429) return { ok: false, error: "429" };
+    if (!res.ok) return { ok: false, error: "naver " + res.status };
+    const data = await readNaverBody(res, 55000);
     const offer = pickBestOffer(data);
-    const v = {
-      ok: true,
-      lowest: data?.status?.lowestFare || null,
-      priceRange: data?.status?.priceRange || null,
-      offer,
-    };
-    cache.set(key, { t: Date.now(), v });
-    return v;
+    if (offer && !offer.price) {
+      const fallback = lowestFromStatus(data);
+      if (fallback) offer.price = fallback;
+    }
+    const lowest = data?.status?.lowestFare || null;
+    const priceRange = data?.status?.priceRange || null;
+    const price = offer?.price || lowestFromStatus(data);
+    if (!price) return { ok: false, error: "empty", offer: null, lowest, priceRange };
+    return { ok: true, offer, lowest, priceRange };
   } catch (err) {
     return { ok: false, error: err.name === "AbortError" ? "timeout" : String(err.message || err) };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function searchNaver(origin, dest, outbound, inbound, adults, nonstop, force) {
+  const key = cacheKey(origin, dest, outbound, inbound, adults, nonstop);
+  const hit = cache.get(key);
+  if (!force && hit && hit.v.ok && Date.now() - hit.t < CACHE_MS) return hit.v;
+  let last = { ok: false, error: "notry" };
+  for (let i = 0; i < 3; i++) {
+    if (i) await sleep(last.error === "429" ? 1500 : 800 * i);
+    last = await searchNaverOnce(origin, dest, outbound, inbound, adults, nonstop);
+    const price = sanePrice(last.offer?.price) || lowestFromStatus(last);
+    if (price) {
+      last.ok = true;
+      if (last.offer && !sanePrice(last.offer.price)) last.offer.price = price;
+      cache.set(key, { t: Date.now(), v: last });
+      return last;
+    }
+    if (last.error && last.error !== "429" && last.error !== "timeout" && last.error !== "empty") break;
+  }
+  return last;
 }
 
 function yymmdd(iso) {
@@ -359,21 +455,25 @@ function buildLinks(origin, dest, outbound, inbound, adults) {
   };
 }
 
+function namedDest(code) {
+  return DEST_INDEX[code] || { code, name: WORLD_NAMES[code] || code, region: "other" };
+}
 function resolveDests(origin, dests, regions) {
+  const extraCodes = (dests || [])
+    .map((x) => String(x).toUpperCase())
+    .filter((code, i, arr) => /^[A-Z]{3}$/.test(code) && code !== origin && arr.indexOf(code) === i);
+  const regionSet = new Set((regions || []).filter((r) => r && r !== "other"));
+  if (!regionSet.size && extraCodes.length) {
+    return extraCodes.map(namedDest);
+  }
   const catalog = DESTINATIONS[origin] || DESTINATIONS.PUS;
   let list = catalog.slice();
-  if (regions && regions.length) {
-    const set = new Set(regions);
-    list = list.filter((d) => set.has(d.region));
-  }
-  if (dests && dests.length) {
-    const have = new Set(list.map((d) => d.code));
-    for (const raw of dests) {
-      const code = String(raw).toUpperCase();
-      if (!/^[A-Z]{3}$/.test(code) || code === origin || have.has(code)) continue;
-      list.push(DEST_INDEX[code] || { code, name: code, region: "other" });
-      have.add(code);
-    }
+  if (regionSet.size) list = list.filter((d) => regionSet.has(d.region));
+  const have = new Set(list.map((d) => d.code));
+  for (const code of extraCodes) {
+    if (have.has(code)) continue;
+    list.push(namedDest(code));
+    have.add(code);
   }
   return list.filter((d) => d.code !== origin);
 }
@@ -463,7 +563,7 @@ function buildJobs(q) {
 
 function toResult(job, searched) {
   const offer = searched.offer;
-  const price = offer?.price || searched.lowest?.direct || searched.lowest?.a01 || searched.priceRange?.min || null;
+  const price = sanePrice(offer?.price) || sanePrice(searched.lowest?.direct) || sanePrice(searched.lowest?.a01) || sanePrice(searched.lowest?.oneStop) || sanePrice(searched.priceRange?.min) || null;
   return {
     origin: job.origin,
     dest: job.dest.code,
@@ -513,6 +613,39 @@ const server = http.createServer(async (req, res) => {
       return json(res, 400, { error: e.message });
     }
   }
+  if (req.method === "POST" && url.pathname === "/api/search-batch") {
+    let body;
+    try {
+      body = await parseBody(req);
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+    const adults = Math.min(9, Math.max(1, Number(body.adults || 1)));
+    const nonstop = !!body.nonstop;
+    const rawJobs = Array.isArray(body.jobs) ? body.jobs.slice(0, 4) : [];
+    if (!rawJobs.length) return json(res, 400, { error: "jobs required" });
+    const jobs = rawJobs.map((j) => {
+      const origin = String(j.origin || "PUS").toUpperCase();
+      const destCode = String(j.dest || j.destCode || "").toUpperCase();
+      const outbound = j.outbound || j.trip?.outbound;
+      const inbound = j.inbound || j.trip?.inbound;
+      const days = Number(j.days || j.trip?.days || 0);
+      const nights = Number(j.nights || j.trip?.nights || Math.max(0, days - 1));
+      const label = j.label || j.trip?.label || nights + "박 " + days + "일";
+      return {
+        origin,
+        dest: namedDest(destCode),
+        trip: { outbound, inbound, days, nights, label },
+        adults,
+        nonstop,
+      };
+    }).filter((j) => j.origin && j.dest.code && j.trip.outbound && j.trip.inbound);
+    const rows = await mapPool(jobs, 2, async (job) => {
+      const searched = await searchNaver(job.origin, job.dest.code, job.trip.outbound, job.trip.inbound, job.adults, job.nonstop);
+      return toResult(job, searched);
+    });
+    return json(res, 200, { rows });
+  }
   if (req.method === "POST" && url.pathname === "/api/search-stream") {
     let q;
     try {
@@ -532,12 +665,23 @@ const server = http.createServer(async (req, res) => {
     });
     res.write(`event: meta\ndata: ${JSON.stringify({ total: jobs.length })}\n\n`);
     let done = 0;
-    await mapPool(jobs, 3, async (job) => {
+    const failed = [];
+    await mapPool(jobs, 2, async (job) => {
       const searched = await searchNaver(job.origin, job.dest.code, job.trip.outbound, job.trip.inbound, job.adults, job.nonstop);
       done += 1;
       const row = toResult(job, searched);
+      if (!row.price) failed.push(job);
       res.write(`event: row\ndata: ${JSON.stringify({ done, total: jobs.length, row })}\n\n`);
     });
+    if (failed.length) {
+      res.write(`event: retry\ndata: ${JSON.stringify({ retrying: failed.length })}\n\n`);
+      await mapPool(failed, 1, async (job) => {
+        await sleep(400);
+        const searched = await searchNaver(job.origin, job.dest.code, job.trip.outbound, job.trip.inbound, job.adults, job.nonstop, true);
+        const row = toResult(job, searched);
+        res.write(`event: row\ndata: ${JSON.stringify({ done, total: jobs.length, row, retry: true })}\n\n`);
+      });
+    }
     res.write(`event: done\ndata: ${JSON.stringify({ done: jobs.length, total: jobs.length })}\n\n`);
     res.end();
     return;
